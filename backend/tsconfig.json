@@ -1,0 +1,42 @@
+// {
+//   "compilerOptions": {
+//     /* ✅ Use Node.js-compatible module system */
+//     "target": "ES2022",
+//     "module": "NodeNext",
+//     "moduleResolution": "NodeNext",
+
+//     /* ✅ Paths and output settings */
+//     "rootDir": "src",
+//     "outDir": "dist",
+
+//     /* ✅ Helpful compiler flags */
+//     "esModuleInterop": true,
+//     "strict": true,
+//     "skipLibCheck": true,
+//     "forceConsistentCasingInFileNames": true
+//   },
+//   "include": ["src"]
+// }
+
+
+{
+  "compilerOptions": {
+    "target": "ES2020",
+   "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "outDir": "./dist"
+  },
+  "include": ["src"]
+}
+
+
+
+
+
+
+
+

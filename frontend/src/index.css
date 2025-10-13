@@ -1,0 +1,89 @@
+
+
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: linear-gradient(135deg, #f9f9ff, #f0f0ff);
+  color: #333;
+  line-height: 1.6;
+}
+
+/* Headings */
+h1, h2, h3 {
+  color: #222;
+  font-weight: 700;
+}
+
+/* Buttons */
+button {
+  cursor: pointer;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background-color: #4f46e5;
+  color: white;
+  font-size: 16px;
+  transition: 0.3s;
+}
+
+button:hover {
+  background-color: #4338ca;
+}
+
+/* Cards / Boxes */
+.card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+  padding: 20px;
+  margin: 10px 0;
+}
+
+/* Input fields */
+input[type="text"], input[type="url"], input[type="email"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: border 0.2s;
+}
+
+input:focus {
+  border-color: #4f46e5;
+  outline: none;
+}
+
+/* Utility classes */
+.text-center {
+  text-align: center;
+}
+
+.container {
+  width: 90%;
+  max-width: 1100px;
+  margin: auto;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+
+.flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
