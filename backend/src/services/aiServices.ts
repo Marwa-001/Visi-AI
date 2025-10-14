@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export interface AIAnalysisResult {
   visualIssues: string[];
@@ -38,47 +39,54 @@ export const analyzeLighthouse = async (url: string): Promise<LighthouseResult> 
           key: LIGHTHOUSE_API_KEY,
           category: ['performance', 'accessibility', 'best-practices', 'seo']
         },
-        timeout: 60000
+        timeout: 60000,
+        headers: {
+          'Referer': 'http://localhost:5000'
+        }
       }
     );
 
     const lighthouse = response.data.lighthouseResult;
-    const audits = lighthouse.audits;
+    if (!lighthouse) {
+      console.error('❌ [LIGHTHOUSE] No lighthouse result in response');
+      return getDefaultLighthouseResult();
+    }
 
-    // Extract accessibility issues
+    const audits = lighthouse.audits || {};
     const accessibilityIssues: string[] = [];
 
-    // Check for common accessibility issues
-    if (audits['color-contrast'] && audits['color-contrast'].score < 1) {
+    if (audits['color-contrast']?.score < 1) {
       accessibilityIssues.push('Low color contrast - fails WCAG standards');
     }
-    if (audits['image-alt'] && audits['image-alt'].score < 1) {
+    if (audits['image-alt']?.score < 1) {
       accessibilityIssues.push('Missing alt text on images');
     }
-    if (audits['aria-allowed-attr'] && audits['aria-allowed-attr'].score < 1) {
+    if (audits['aria-allowed-attr']?.score < 1) {
       accessibilityIssues.push('Invalid ARIA attributes detected');
     }
-    if (audits['aria-required-attr'] && audits['aria-required-attr'].score < 1) {
+    if (audits['aria-required-attr']?.score < 1) {
       accessibilityIssues.push('Missing required ARIA attributes');
     }
-    if (audits['form-field-multiple-labels'] && audits['form-field-multiple-labels'].score < 1) {
+    if (audits['form-field-multiple-labels']?.score < 1) {
       accessibilityIssues.push('Form fields missing proper labels');
     }
-    if (audits['label'] && audits['label'].score < 1) {
+    if (audits['label']?.score < 1) {
       accessibilityIssues.push('Form inputs without associated labels');
     }
-    if (audits['link-name'] && audits['link-name'].score < 1) {
+    if (audits['link-name']?.score < 1) {
       accessibilityIssues.push('Links without descriptive text');
     }
-    if (audits['document-title'] && audits['document-title'].score < 1) {
+    if (audits['document-title']?.score < 1) {
       accessibilityIssues.push('Page missing document title');
     }
 
+    const categories = lighthouse.categories || {};
+
     const result: LighthouseResult = {
-      accessibilityScore: Math.round(lighthouse.categories.accessibility.score * 100),
-      performanceScore: Math.round(lighthouse.categories.performance.score * 100),
-      bestPracticesScore: Math.round(lighthouse.categories['best-practices'].score * 100),
-      seoScore: Math.round(lighthouse.categories.seo.score * 100),
+      accessibilityScore: Math.round((categories.accessibility?.score || 0) * 100),
+      performanceScore: Math.round((categories.performance?.score || 0) * 100),
+      bestPracticesScore: Math.round((categories['best-practices']?.score || 0) * 100),
+      seoScore: Math.round((categories.seo?.score || 0) * 100),
       accessibilityIssues
     };
 
@@ -90,13 +98,16 @@ export const analyzeLighthouse = async (url: string): Promise<LighthouseResult> 
 
     return result;
   } catch (error: any) {
-    console.error('❌ [LIGHTHOUSE] Error:', error.message);
+    console.error('❌ [LIGHTHOUSE] Error:', error.response?.status, error.message);
+    if (error.response?.data) {
+      console.error('   Response:', error.response.data);
+    }
     return getDefaultLighthouseResult();
   }
 };
 
 // ========================================
-// GEMINI API VISUAL ANALYSIS
+// GEMINI API VISUAL ANALYSIS (Using SDK)
 // ========================================
 export const analyzeWithGemini = async (screenshot: string): Promise<AIAnalysisResult> => {
   const visualIssues: string[] = [];
@@ -112,25 +123,28 @@ export const analyzeWithGemini = async (screenshot: string): Promise<AIAnalysisR
       return getDefaultAIAnalysis();
     }
 
-    console.log('🤖 [GEMINI] Calling Google Gemini Vision API...');
+    console.log('🤖 [GEMINI] Calling Google Gemini Vision API with SDK...');
 
-    const base64Image = screenshot.replace(/^data:image\/\w+;base64,/, '');
+    // Initialize with Google Generative AI SDK
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    // Use gemini-2.5-flash - the latest model available with vision support
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        contents: [
-          {
-            parts: [
-              {
-                text: `You are a web design expert. Analyze this website screenshot and provide:
+    // Remove data URI prefix
+    let base64Image = screenshot;
+    if (screenshot.includes('base64,')) {
+      base64Image = screenshot.split('base64,')[1];
+    }
 
-1. VISUAL ISSUES: List specific visual problems (poor contrast, cluttered layout, hard to read text, inconsistent spacing)
-2. LAYOUT PROBLEMS: List layout issues (poor hierarchy, misaligned elements, responsive design issues)
-3. CLARITY SCORE: Rate visual clarity 0-100
-4. ATTENTION ZONES: Identify 4 key areas where users focus (header, main-content, sidebar, footer) with intensity 0-1
+    const imagePart = {
+      inlineData: {
+        data: base64Image,
+        mimeType: 'image/jpeg',
+      },
+    };
 
-Response format (JSON only):
+    const textPart = `You are a web design expert analyzing a website screenshot. Provide ONLY a JSON response with no additional text.
+
 {
   "visualIssues": ["issue1", "issue2", "issue3"],
   "layoutProblems": ["problem1", "problem2"],
@@ -141,22 +155,11 @@ Response format (JSON only):
     {"area": "sidebar", "intensity": 0.5, "x": 80, "y": 50},
     {"area": "footer", "intensity": 0.3, "x": 50, "y": 80}
   ]
-}`
-              },
-              {
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: base64Image
-                }
-              }
-            ]
-          }
-        ]
-      },
-      { timeout: 30000 }
-    );
+}`;
 
-    const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const result = await model.generateContent([imagePart, textPart]);
+    const response = await result.response;
+    const responseText = response.text();
 
     if (!responseText) {
       console.error('❌ [GEMINI] No response from API');
@@ -166,19 +169,23 @@ Response format (JSON only):
     let analysisData;
     try {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      analysisData = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+      analysisData = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error('❌ [GEMINI] Failed to parse response');
+      console.error('❌ [GEMINI] Failed to parse response:', parseError);
+      console.error('   Raw response:', responseText.substring(0, 300));
       return getDefaultAIAnalysis();
     }
 
-    if (analysisData.visualIssues) {
+    if (analysisData.visualIssues && Array.isArray(analysisData.visualIssues)) {
       visualIssues.push(...analysisData.visualIssues.slice(0, 5));
     }
-    if (analysisData.layoutProblems) {
+    if (analysisData.layoutProblems && Array.isArray(analysisData.layoutProblems)) {
       layoutProblems.push(...analysisData.layoutProblems.slice(0, 5));
     }
-    if (analysisData.clarityScore) {
+    if (typeof analysisData.clarityScore === 'number') {
       clarityScore = Math.min(100, Math.max(0, analysisData.clarityScore));
     }
     if (analysisData.attentionZones && Array.isArray(analysisData.attentionZones)) {
@@ -244,7 +251,6 @@ export const generateRecommendations = (
 ): string[] => {
   const recommendations: string[] = [];
 
-  // Lighthouse-based accessibility recommendations
   if (lighthouseAccessibility < 80) {
     if (lighthouseIssues.length > 0) {
       recommendations.push(...lighthouseIssues.slice(0, 3));
@@ -257,7 +263,6 @@ export const generateRecommendations = (
     recommendations.push('Test with screen readers (NVDA, JAWS)');
   }
 
-  // Readability recommendations
   if (readabilityScore < 60) {
     recommendations.push('Simplify complex sentences for better readability');
     recommendations.push('Break long paragraphs into shorter chunks (3-4 sentences)');
@@ -268,14 +273,12 @@ export const generateRecommendations = (
     recommendations.push('Consider rewriting content for a general audience');
   }
 
-  // Visual clarity recommendations
   if (visualIssues.length > 0) {
     recommendations.push('Increase contrast between text and background');
     recommendations.push('Ensure consistent spacing and alignment throughout');
     recommendations.push('Improve visual hierarchy with clear heading structure');
   }
 
-  // General recommendations
   recommendations.push('Ensure all images have descriptive alt text');
   recommendations.push('Add skip navigation links for keyboard users');
   recommendations.push('Test with keyboard navigation only');
