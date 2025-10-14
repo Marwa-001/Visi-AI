@@ -1,4 +1,3 @@
-
 import puppeteer from 'puppeteer';
 
 export interface ScreenshotResult {
@@ -9,34 +8,99 @@ export interface ScreenshotResult {
 }
 
 export const captureWebsite = async (url: string): Promise<ScreenshotResult> => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
-
+  let browser;
+  
   try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--disable-web-resources',
+        '--disable-features=TranslateUI'
+      ]
+    });
+
     const page = await browser.newPage();
-    await page.setViewport({ width: 1920, height: 1080 });
     
-    // Navigate to URL
+    // Set viewport to smaller size to reduce screenshot size
+    await page.setViewport({ width: 1280, height: 720 });
+    
+    // Set user agent
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
+    console.log(`📸 Navigating to: ${url}`);
+    
+    // Navigate with relaxed timeout
     await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
+      waitUntil: 'domcontentloaded',
+      timeout: 45000 
     });
 
-    // Capture screenshot
-    const screenshot = await page.screenshot({ 
-      encoding: 'base64',
-      fullPage: true 
+    console.log('⏳ Waiting for content to render...');
+    
+    // Wait for document to be ready
+    await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {
+      console.warn('⚠️ Network idle timeout, continuing anyway');
     });
 
-    // Extract HTML
+    // Extra wait for JS to execute
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    console.log('✅ Page loaded');
+
+    // Get page content
     const html = await page.content();
+    console.log(`✅ HTML extracted (${html.length} characters)`);
 
-    // Extract text content
-    const textContent = await page.evaluate(() => document.body.innerText);
+    // Extract text - simple and reliable
+    let textContent = await page.evaluate(() => {
+      return document.body.innerText || '';
+    });
 
-    // Extract DOM elements for analysis
+    console.log(`📝 Text content: ${textContent.length} characters`);
+
+    // If no text, try alternative method
+    if (textContent.length < 50) {
+      console.warn('⚠️ Very little text found, trying alternative extraction...');
+      
+      textContent = await page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('body, body *'));
+        const texts: string[] = [];
+        
+        for (const el of elements) {
+          const text = (el as HTMLElement).innerText?.trim();
+          if (text && text.length > 0) {
+            texts.push(text);
+          }
+        }
+        
+        return texts.join(' ');
+      });
+      
+      console.log(`📝 Alternative text: ${textContent.length} characters`);
+    }
+
+    // Capture screenshot with JPEG compression for smaller file size
+    console.log('📸 Capturing screenshot...');
+    
+    const screenshotBuffer = await page.screenshot({
+      fullPage: false,
+      type: 'jpeg',
+      quality: 80
+    });
+
+    // Convert to base64
+    const screenshot = screenshotBuffer.toString('base64');
+
+    console.log(`✅ Screenshot captured (${screenshot.length} bytes as base64)`);
+
+    // Extract DOM elements
     const domElements = await page.evaluate(() => {
       const images = Array.from(document.querySelectorAll('img')).map(img => ({
         src: img.src,
@@ -56,19 +120,30 @@ export const captureWebsite = async (url: string): Promise<ScreenshotResult> => 
         labels: form.querySelectorAll('label').length
       }));
 
-      return { images, headings, buttons, forms };
+      return { 
+        images, 
+        headings, 
+        buttons, 
+        forms
+      };
     });
+
+    console.log(`📊 DOM: ${domElements.images.length} images, ${domElements.headings.length} headings, ${domElements.buttons} buttons`);
 
     await browser.close();
 
     return {
-      screenshot: `data:image/png;base64,${screenshot}`,
+      screenshot: `data:image/jpeg;base64,${screenshot}`,
       html,
-      textContent,
+      textContent: textContent.trim(),
       domElements
     };
+
   } catch (error) {
-    await browser.close();
+    console.error('❌ Error:', error);
+    if (browser) {
+      await browser.close();
+    }
     throw error;
   }
 };
